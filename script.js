@@ -1,0 +1,232 @@
+/* =====================================================================
+   HASH_TECH — Website interactions
+   No framework or build step needed. Each block is independent.
+   ===================================================================== */
+(() => {
+  "use strict";
+
+  const root = document.documentElement;
+  const header = document.querySelector(".site-header");
+  const menuButton = document.querySelector(".menu-toggle");
+  const nav = document.querySelector(".main-nav");
+  const themeButton = document.querySelector(".theme-toggle");
+  const form = document.querySelector("#contact-form");
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  /* Render the CDN-provided Lucide icons, if the library is available. */
+  if (window.lucide && typeof window.lucide.createIcons === "function") {
+    window.lucide.createIcons();
+  }
+
+  /* THEME: light by default; remembers the visitor's chosen mode. */
+  function storedTheme() {
+    try { return localStorage.getItem("hash-tech-theme"); }
+    catch { return null; } // Works even when localStorage is disabled.
+  }
+  function saveTheme(value) {
+    try { localStorage.setItem("hash-tech-theme", value); }
+    catch { /* Private browsing may block localStorage. */ }
+  }
+  function applyTheme(value) {
+    root.dataset.theme = value;
+    if (themeButton) {
+      const isDark = value === "dark";
+      themeButton.setAttribute("aria-pressed", String(isDark));
+      themeButton.setAttribute("aria-label", `Switch to ${isDark ? "light" : "dark"} mode`);
+    }
+  }
+  const saved = storedTheme();
+  applyTheme(saved === "dark" ? "dark" : "light");
+  themeButton?.addEventListener("click", () => {
+    const next = root.dataset.theme === "dark" ? "light" : "dark";
+    applyTheme(next);
+    saveTheme(next);
+  });
+
+  /* MOBILE MENU: real button with ARIA expanded state and Escape support. */
+  function setMenu(open) {
+    if (!header || !menuButton) return;
+    header.classList.toggle("menu-open", open);
+    menuButton.setAttribute("aria-expanded", String(open));
+    menuButton.setAttribute("aria-label", open ? "Close navigation menu" : "Open navigation menu");
+  }
+  menuButton?.addEventListener("click", () => {
+    const shouldOpen = menuButton.getAttribute("aria-expanded") !== "true";
+    setMenu(shouldOpen);
+    // On mobile the menu is before the toggle in DOM order; move focus into it.
+    if (shouldOpen) nav?.querySelector("a")?.focus();
+  });
+  nav?.querySelectorAll("a").forEach(link => {
+    link.addEventListener("click", () => {
+      const destination = document.querySelector(link.getAttribute("href"));
+      setMenu(false);
+      // After selecting a navigation link, return keyboard focus to the content.
+      if (destination && window.matchMedia("(max-width: 1029px)").matches) {
+        destination.setAttribute("tabindex", "-1");
+        destination.focus({ preventScroll: true });
+      }
+    });
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && header?.classList.contains("menu-open")) {
+      setMenu(false);
+      menuButton?.focus();
+    }
+  });
+  document.addEventListener("click", event => {
+    if (header?.classList.contains("menu-open") && !header.contains(event.target)) {
+      setMenu(false);
+    }
+  });
+  window.matchMedia("(min-width: 1030px)").addEventListener("change", event => {
+    if (event.matches) setMenu(false);
+  });
+
+  /* Reveal cards only if IntersectionObserver is available. */
+  if ("IntersectionObserver" in window && !reduceMotion.matches) {
+    root.classList.add("js-ready");
+    const observer = new IntersectionObserver((entries, activeObserver) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("in-view");
+          activeObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: "0px 0px -22px 0px" });
+    document.querySelectorAll(".reveal").forEach(el => observer.observe(el));
+  }
+
+  /* Scroll progress and active navigation labels. No forced layout per frame. */
+  const progress = document.querySelector(".scroll-progress");
+  const navLinks = [...document.querySelectorAll(".main-nav a[href^='#']")];
+  let scrollFrame = false;
+  function updateProgress() {
+    const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+    const percentage = scrollable > 0 ? Math.min(100, window.scrollY / scrollable * 100) : 0;
+    if (progress) progress.style.width = `${percentage}%`;
+    scrollFrame = false;
+  }
+  window.addEventListener("scroll", () => {
+    if (!scrollFrame) { scrollFrame = true; requestAnimationFrame(updateProgress); }
+  }, { passive: true });
+  window.addEventListener("resize", updateProgress, { passive: true });
+  updateProgress();
+
+  if ("IntersectionObserver" in window) {
+    const currentSection = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        navLinks.forEach(link => {
+          const active = link.getAttribute("href") === `#${entry.target.id}`;
+          link.classList.toggle("active", active);
+          if (active) link.setAttribute("aria-current", "location");
+          else link.removeAttribute("aria-current");
+        });
+      });
+    }, { rootMargin: "-20% 0px -65% 0px" });
+    document.querySelectorAll("section[id]").forEach(section => currentSection.observe(section));
+  }
+
+  /* Custom cursor: only for a fine desktop pointer, never for touch or motion-sensitive users. */
+  const desktopPointer = window.matchMedia("(hover: hover) and (pointer: fine)");
+  const dot = document.querySelector(".custom-cursor");
+  const ring = document.querySelector(".custom-cursor-ring");
+  if (desktopPointer.matches && !reduceMotion.matches && dot && ring) {
+    let x = -100, y = -100, ringX = -100, ringY = -100;
+    let pointerSeen = false;
+    document.addEventListener("pointermove", event => {
+      if (event.pointerType !== "mouse") return;
+      x = event.clientX;
+      y = event.clientY;
+      if (!pointerSeen) {
+        pointerSeen = true;
+        ringX = x; ringY = y;
+        document.body.classList.add("cursor-on");
+      }
+      dot.style.left = `${x}px`;
+      dot.style.top = `${y}px`;
+    }, { passive: true });
+    function animateRing() {
+      ringX += (x - ringX) * 0.2;
+      ringY += (y - ringY) * 0.2;
+      ring.style.left = `${ringX}px`;
+      ring.style.top = `${ringY}px`;
+      requestAnimationFrame(animateRing);
+    }
+    animateRing();
+    document.querySelectorAll("a, button, summary, input, select, textarea").forEach(el => {
+      el.addEventListener("pointerenter", () => document.body.classList.add("cursor-hover"));
+      el.addEventListener("pointerleave", () => document.body.classList.remove("cursor-hover"));
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Tab") document.body.classList.remove("cursor-on");
+    });
+    document.addEventListener("pointermove", event => {
+      if (event.pointerType === "mouse" && pointerSeen) document.body.classList.add("cursor-on");
+    }, { passive: true });
+    document.addEventListener("mouseout", event => {
+      if (!event.relatedTarget) document.body.classList.remove("cursor-on");
+    });
+  }
+
+  /* Contact form: use Formspree on Vercel (or any static host).
+     Paste your unique endpoint in the form action inside index.html.
+     Never display success unless Formspree confirms the POST. */
+  if (form) {
+    const status = document.querySelector("#form-status");
+    const submit = form.querySelector("button[type='submit']");
+    const label = submit?.querySelector(".submit-label");
+
+    function showStatus(message, state = "error") {
+      if (!status) return;
+      status.textContent = message;
+      status.dataset.state = state;
+    }
+
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+
+      // Keep the form safely disabled until your actual Formspree ID is added.
+      if (form.action.includes("YOUR_FORM_ID")) {
+        showStatus("Contact form setup is incomplete. Please add your Formspree form ID.");
+        return;
+      }
+
+      if (submit) submit.disabled = true;
+      if (label) label.textContent = "Sending...";
+      showStatus("Sending your enquiry...", "sending");
+
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          body: new FormData(form),
+          headers: { "Accept": "application/json" }
+        });
+
+        if (!response.ok) {
+          let errorMessage = "The message could not be sent. Please try again or use WhatsApp.";
+          try {
+            const details = await response.json();
+            if (Array.isArray(details.errors) && details.errors.length) {
+              errorMessage = details.errors.map(item => item.message).filter(Boolean).join(" ") || errorMessage;
+            }
+          } catch (_) { /* An error response might not contain JSON. */ }
+          throw new Error(errorMessage);
+        }
+
+        form.reset();
+        showStatus("Your enquiry has been sent. Thank you — I'll get back to you by email.", "success");
+      } catch (error) {
+        console.error("Contact form submission failed:", error);
+        showStatus(error.message || "The message could not be sent. Please use WhatsApp or email.");
+      } finally {
+        if (submit) submit.disabled = false;
+        if (label) label.textContent = "Send enquiry";
+      }
+    });
+  }
+
+  const year = document.querySelector("#copyright-year");
+  if (year) year.textContent = String(new Date().getFullYear());
+})();

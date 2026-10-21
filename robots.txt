@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /thanks.html
+
+# TODO: replace YOUR-DOMAIN.example with your actual domain before launch.
+Sitemap: https://YOUR-DOMAIN.example/sitemap.xml
