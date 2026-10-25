@@ -1,7 +1,3 @@
-/* =====================================================================
-   HASH_TECH — Website interactions
-   No framework or build step needed. Each block is independent.
-   ===================================================================== */
 (() => {
   "use strict";
 
@@ -13,19 +9,18 @@
   const form = document.querySelector("#contact-form");
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-  /* Render the CDN-provided Lucide icons, if the library is available. */
   if (window.lucide && typeof window.lucide.createIcons === "function") {
     window.lucide.createIcons();
   }
 
-  /* THEME: light by default; remembers the visitor's chosen mode. */
+  /* Theme */
   function storedTheme() {
     try { return localStorage.getItem("hash-tech-theme"); }
-    catch { return null; } // Works even when localStorage is disabled.
+    catch { return null; }
   }
   function saveTheme(value) {
     try { localStorage.setItem("hash-tech-theme", value); }
-    catch { /* Private browsing may block localStorage. */ }
+    catch { /* Storage can be unavailable. */ }
   }
   function applyTheme(value) {
     root.dataset.theme = value;
@@ -35,15 +30,14 @@
       themeButton.setAttribute("aria-label", `Switch to ${isDark ? "light" : "dark"} mode`);
     }
   }
-  const saved = storedTheme();
-  applyTheme(saved === "dark" ? "dark" : "light");
+  applyTheme(storedTheme() === "dark" ? "dark" : "light");
   themeButton?.addEventListener("click", () => {
     const next = root.dataset.theme === "dark" ? "light" : "dark";
     applyTheme(next);
     saveTheme(next);
   });
 
-  /* MOBILE MENU: real button with ARIA expanded state and Escape support. */
+  /* Mobile menu */
   function setMenu(open) {
     if (!header || !menuButton) return;
     header.classList.toggle("menu-open", open);
@@ -51,16 +45,15 @@
     menuButton.setAttribute("aria-label", open ? "Close navigation menu" : "Open navigation menu");
   }
   menuButton?.addEventListener("click", () => {
-    const shouldOpen = menuButton.getAttribute("aria-expanded") !== "true";
-    setMenu(shouldOpen);
-    // On mobile the menu is before the toggle in DOM order; move focus into it.
-    if (shouldOpen) nav?.querySelector("a")?.focus();
+    const open = menuButton.getAttribute("aria-expanded") !== "true";
+    setMenu(open);
+    if (open) nav?.querySelector("a")?.focus();
   });
   nav?.querySelectorAll("a").forEach(link => {
     link.addEventListener("click", () => {
-      const destination = document.querySelector(link.getAttribute("href"));
+      const href = link.getAttribute("href");
+      const destination = href?.startsWith("#") ? document.querySelector(href) : null;
       setMenu(false);
-      // After selecting a navigation link, return keyboard focus to the content.
       if (destination && window.matchMedia("(max-width: 1029px)").matches) {
         destination.setAttribute("tabindex", "-1");
         destination.focus({ preventScroll: true });
@@ -74,15 +67,13 @@
     }
   });
   document.addEventListener("click", event => {
-    if (header?.classList.contains("menu-open") && !header.contains(event.target)) {
-      setMenu(false);
-    }
+    if (header?.classList.contains("menu-open") && !header.contains(event.target)) setMenu(false);
   });
   window.matchMedia("(min-width: 1030px)").addEventListener("change", event => {
     if (event.matches) setMenu(false);
   });
 
-  /* Reveal cards only if IntersectionObserver is available. */
+  /* Reveal animations */
   if ("IntersectionObserver" in window && !reduceMotion.matches) {
     root.classList.add("js-ready");
     const observer = new IntersectionObserver((entries, activeObserver) => {
@@ -96,7 +87,7 @@
     document.querySelectorAll(".reveal").forEach(el => observer.observe(el));
   }
 
-  /* Scroll progress and active navigation labels. No forced layout per frame. */
+  /* Scroll progress */
   const progress = document.querySelector(".scroll-progress");
   const navLinks = [...document.querySelectorAll(".main-nav a[href^='#']")];
   let scrollFrame = false;
@@ -107,7 +98,10 @@
     scrollFrame = false;
   }
   window.addEventListener("scroll", () => {
-    if (!scrollFrame) { scrollFrame = true; requestAnimationFrame(updateProgress); }
+    if (!scrollFrame) {
+      scrollFrame = true;
+      requestAnimationFrame(updateProgress);
+    }
   }, { passive: true });
   window.addEventListener("resize", updateProgress, { passive: true });
   updateProgress();
@@ -127,7 +121,7 @@
     document.querySelectorAll("section[id]").forEach(section => currentSection.observe(section));
   }
 
-  /* Custom cursor: only for a fine desktop pointer, never for touch or motion-sensitive users. */
+  /* Custom cursor */
   const desktopPointer = window.matchMedia("(hover: hover) and (pointer: fine)");
   const dot = document.querySelector(".custom-cursor");
   const ring = document.querySelector(".custom-cursor-ring");
@@ -140,7 +134,8 @@
       y = event.clientY;
       if (!pointerSeen) {
         pointerSeen = true;
-        ringX = x; ringY = y;
+        ringX = x;
+        ringY = y;
         document.body.classList.add("cursor-on");
       }
       dot.style.left = `${x}px`;
@@ -169,9 +164,8 @@
     });
   }
 
-  /* Contact form: use Formspree on Vercel (or any static host).
-     Paste your unique endpoint in the form action inside index.html.
-     Never display success unless Formspree confirms the POST. */
+  /* Contact form: sends JSON to Vercel /api/contact.
+     Set FORMSPREE_FORM_ID in Vercel environment variables; never put the ID here. */
   if (form) {
     const status = document.querySelector("#form-status");
     const submit = form.querySelector("button[type='submit']");
@@ -187,36 +181,37 @@
       event.preventDefault();
       if (!form.reportValidity()) return;
 
-      // Keep the form safely disabled until your actual Formspree ID is added.
-      if (form.action.includes("YOUR_FORM_ID")) {
-        showStatus("Contact form setup is incomplete. Please add your Formspree form ID.");
-        return;
-      }
-
       if (submit) submit.disabled = true;
       if (label) label.textContent = "Sending...";
       showStatus("Sending your enquiry...", "sending");
 
       try {
-        const response = await fetch(form.action, {
+        const payload = Object.fromEntries(new FormData(form).entries());
+        const response = await fetch("/api/contact", {
           method: "POST",
-          body: new FormData(form),
-          headers: { "Accept": "application/json" }
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          body: JSON.stringify(payload)
         });
 
+        let result = {};
+        try { result = await response.json(); } catch { /* Non-JSON error response. */ }
+
         if (!response.ok) {
-          let errorMessage = "The message could not be sent. Please try again or use WhatsApp.";
-          try {
-            const details = await response.json();
-            if (Array.isArray(details.errors) && details.errors.length) {
-              errorMessage = details.errors.map(item => item.message).filter(Boolean).join(" ") || errorMessage;
-            }
-          } catch (_) { /* An error response might not contain JSON. */ }
-          throw new Error(errorMessage);
+          throw new Error(
+            typeof result.error === "string"
+              ? result.error
+              : "The message could not be sent. Please try again or use WhatsApp."
+          );
         }
 
         form.reset();
-        showStatus("Your enquiry has been sent. Thank you — I'll get back to you by email.", "success");
+        showStatus(
+          result.message || "Your enquiry has been sent. Thank you — I'll get back to you by email.",
+          "success"
+        );
       } catch (error) {
         console.error("Contact form submission failed:", error);
         showStatus(error.message || "The message could not be sent. Please use WhatsApp or email.");
